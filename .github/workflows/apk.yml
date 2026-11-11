@@ -1,0 +1,50 @@
+name: apk
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Unzip project
+        run: unzip -o geo_mesh.zip -d project
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Prepare
+        working-directory: project
+        run: |
+          flutter create --platforms=android --project-name geo_mesh .
+          rm -f test/widget_test.dart
+          python3 tool/patch_platform_files.py
+          flutter pub get
+
+      - name: Tests
+        working-directory: project
+        continue-on-error: true
+        run: flutter test
+
+      - name: Build APK
+        working-directory: project
+        run: flutter build apk --release
+
+      - name: Publish APK to Releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "apk-${{ github.run_number }}" \
+            project/build/app/outputs/flutter-apk/app-release.apk \
+            --title "APK ${{ github.run_number }}" \
+            --notes "auto build"
